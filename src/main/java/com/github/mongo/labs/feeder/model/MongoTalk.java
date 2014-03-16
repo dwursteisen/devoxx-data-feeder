@@ -2,6 +2,7 @@ package com.github.mongo.labs.feeder.model;
 
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.LinkedList;
 
 /**
  * Created with IntelliJ IDEA.
@@ -17,10 +18,10 @@ public class MongoTalk {
     public String title;
     public String lang;
     public Collection<MongoSpeaker> speakers = new ArrayList<>();
-    public String[] tags;
+    public LinkedList<String> tags;
 
     @Override
     public String toString() {
-        return _id + " -> "+ speakers;
+        return _id + " -> " + speakers;
     }
 }

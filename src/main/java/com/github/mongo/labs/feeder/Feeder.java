@@ -7,7 +7,6 @@ import com.github.mongo.labs.feeder.model.MongoSpeaker;
 import com.github.mongo.labs.feeder.model.MongoTalk;
 import com.github.ryenus.rop.OptionParser;
 import com.mongodb.MongoURI;
-import org.bson.types.ObjectId;
 import org.jongo.Jongo;
 import org.jongo.MongoCollection;
 import retrofit.RestAdapter;
@@ -18,6 +17,7 @@ import rx.util.functions.Func1;
 import rx.util.functions.Func2;
 
 import java.net.UnknownHostException;
+import java.util.Arrays;
 import java.util.LinkedList;
 import java.util.List;
 
@@ -49,6 +49,24 @@ public class Feeder {
         parser.parse(args);
 
     }
+
+    private final List<String> cloudWords = Arrays.asList(
+            "agile", // \n
+            "nosql", // \n
+            "reactive", // \n
+            "functionnal", // \n
+            "scrum",// \n
+            "dart",
+            "web",
+            "scala",
+            "java",
+            "devops",
+            "docker",
+            "cloud",
+            "tdd",
+            "javascript",
+            "git",
+            "virtualisation");
 
     private void run() {
         final Log log = new Log(verbose);
@@ -127,7 +145,7 @@ public class Feeder {
                 public Boolean call(Speaker.Link link) {
                     return link.getTalkId() != null;
                 }
-            }).flatMap(new Func1<Speaker.Link, Observable<Talk>>() {
+            }).distinct().flatMap(new Func1<Speaker.Link, Observable<Talk>>() {
                 @Override
                 public Observable<Talk> call(Speaker.Link link) {
                     log.info("Gestion du talk %s", link.getTalkId());
@@ -143,13 +161,23 @@ public class Feeder {
                     t.lang = talk.lang;
                     t.summary = talk.summaryAsHtml;
 
-                    // TODO extraction des tags
-                    t.tags = new String[]{
-                            "cloud", "truc", "bidule"
-                    };
+
+                    final String lowerSummary = talk.summaryAsHtml.toLowerCase();
+                    t.tags = Observable.from(cloudWords).filter(new Func1<String, Boolean>() {
+                        @Override
+                        public Boolean call(String s) {
+                            return lowerSummary.contains(s);
+                        }
+                    }).reduce(new LinkedList<String>(), new Func2<LinkedList<String>, String, LinkedList<String>>() {
+                        @Override
+                        public LinkedList<String> call(LinkedList<String> words, String s) {
+                            words.add(s);
+                            return words;
+                        }
+                    }).toBlockingObservable().single();
 
 
-                    Iterable<MongoSpeaker> tmpSpeakers = Observable.from(talk.speakers).flatMap(new Func1<Talk.Link, Observable<Speaker>>() {
+                    t.speakers = Observable.from(talk.speakers).flatMap(new Func1<Talk.Link, Observable<Speaker>>() {
                         @Override
                         public Observable<Speaker> call(Talk.Link link) {
                             log.info("recuperation pour le talk %s du speaker %s", talk.id, link.getSpeakerUid());
@@ -166,12 +194,14 @@ public class Feeder {
                             // s.id = new ObjectId(speaker.uuid);
                             return s;  //To change body of implemented methods use File | Settings | File Templates.
                         }
-                    }).toBlockingObservable().toIterable();
+                    }).reduce(new LinkedList<MongoSpeaker>(), new Func2<LinkedList<MongoSpeaker>, MongoSpeaker, LinkedList<MongoSpeaker>>() {
+                        @Override
+                        public LinkedList<MongoSpeaker> call(LinkedList<MongoSpeaker> speakersList, MongoSpeaker mongoSpeaker) {
+                            speakersList.add(mongoSpeaker);
+                            return speakersList;
+                        }
+                    }).toBlockingObservable().single();
 
-                    t.speakers = new LinkedList<>();
-                    for (MongoSpeaker tmpSpeaker : tmpSpeakers) {
-                        t.speakers.add(tmpSpeaker);
-                    }
                     return t;
                 }
             });
@@ -179,7 +209,6 @@ public class Feeder {
             talks.subscribe(new Action1<MongoTalk>() {
                                 @Override
                                 public void call(MongoTalk mongoTalk) {
-                                    mongoTalks.remove("{_id: #}", mongoTalk._id);
                                     mongoTalks.insert(mongoTalk);
                                     log.info("Ajout du talk %s en base", mongoTalk._id);
                                 }
@@ -201,7 +230,7 @@ public class Feeder {
                 public Integer call(Object o) {
                     return 1;
                 }
-            }).scan(0, new Func2<Integer, Integer, Integer>() {
+            }).scan(new Func2<Integer, Integer, Integer>() {
                 @Override
                 public Integer call(Integer seed, Integer newValue) {
                     return seed.intValue() + newValue.intValue();
