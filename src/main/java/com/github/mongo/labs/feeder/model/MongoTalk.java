@@ -1,6 +1,7 @@
 package com.github.mongo.labs.feeder.model;
 
 import java.util.ArrayList;
+import java.util.Collection;
 
 /**
  * Created with IntelliJ IDEA.
@@ -15,7 +16,7 @@ public class MongoTalk {
     public String summary;
     public String title;
     public String lang;
-    public Iterable<MongoSpeaker> speakers = new ArrayList<>();
+    public Collection<MongoSpeaker> speakers = new ArrayList<>();
     public String[] tags;
 
     @Override

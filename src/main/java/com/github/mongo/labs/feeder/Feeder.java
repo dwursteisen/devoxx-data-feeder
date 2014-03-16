@@ -18,6 +18,7 @@ import rx.util.functions.Func1;
 import rx.util.functions.Func2;
 
 import java.net.UnknownHostException;
+import java.util.LinkedList;
 import java.util.List;
 
 /**
@@ -148,7 +149,7 @@ public class Feeder {
                     };
 
 
-                    t.speakers = Observable.from(talk.speakers).flatMap(new Func1<Talk.Link, Observable<Speaker>>() {
+                    Iterable<MongoSpeaker> tmpSpeakers = Observable.from(talk.speakers).flatMap(new Func1<Talk.Link, Observable<Speaker>>() {
                         @Override
                         public Observable<Speaker> call(Talk.Link link) {
                             log.info("recuperation pour le talk %s du speaker %s", talk.id, link.getSpeakerUid());
@@ -166,6 +167,11 @@ public class Feeder {
                             return s;  //To change body of implemented methods use File | Settings | File Templates.
                         }
                     }).toBlockingObservable().toIterable();
+
+                    t.speakers = new LinkedList<>();
+                    for (MongoSpeaker tmpSpeaker : tmpSpeakers) {
+                        t.speakers.add(tmpSpeaker);
+                    }
                     return t;
                 }
             });
