@@ -17,11 +17,16 @@ public class MongoTalk {
     public String summary;
     public String title;
     public String lang;
-    public Collection<MongoSpeaker> speakers = new ArrayList<>();
+    public Collection<TalkSpeaker> speakers = new ArrayList<>();
     public LinkedList<String> tags;
 
     @Override
     public String toString() {
         return _id + " -> " + speakers;
+    }
+
+    public static class TalkSpeaker {
+        public MongoSpeaker.Name name;
+        public String ref;
     }
 }

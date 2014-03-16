@@ -40,10 +40,10 @@ public class MongoSpeaker {
     public String bio;
     public Geo geo;
 
-    public ObjectId id;
+    public ObjectId _id;
     // public byte[] avatar;
 
     public String toString() {
-        return "" + id + " name : "+name;
+        return "" + _id + " name : "+name;
     }
 }

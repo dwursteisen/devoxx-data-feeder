@@ -54,5 +54,8 @@
         <retrofit.version>1.4.1</retrofit.version>
         <rop.version>1.1</rop.version>
         <rxjava.version>0.16.0</rxjava.version>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <maven.compiler.source>1.8</maven.compiler.source>
+        <maven.compiler.target>1.8</maven.compiler.target>
     </properties>
 </project>
