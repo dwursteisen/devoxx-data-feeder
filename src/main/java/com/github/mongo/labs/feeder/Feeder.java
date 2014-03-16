@@ -11,12 +11,10 @@ import org.jongo.Jongo;
 import org.jongo.MongoCollection;
 import retrofit.RestAdapter;
 import rx.Observable;
-import rx.util.functions.Func1;
+import rx.util.functions.Action1;
 
 import java.net.UnknownHostException;
-import java.util.Arrays;
-import java.util.LinkedList;
-import java.util.List;
+import java.util.*;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -49,6 +47,9 @@ public class Feeder {
             "virtualisation",
             "groovy",
             "clojure");
+
+    private final Map<String, Action1<MongoTalk>> conferenceType = new HashMap<>();
+
     @OptionParser.Option(opt = {"--verbose", "-V"}, description = "Log each operation done")
     private boolean verbose;
     @OptionParser.Option(opt = "--uri", description = "MongoDB uri to use (default: mongodb://localhost:27017/devoxx)")
@@ -69,7 +70,45 @@ public class Feeder {
 
     }
 
+    private final List<List<String>> techTeams = Arrays.asList(
+            Arrays.asList("John Doe", "Michel Bucker"),
+            Arrays.asList("Luc Flamant", "Bob Artignon"),
+            Arrays.asList("Julie Estaki", "Louis Chinel"),
+            Arrays.asList("Brigitte Bluz", "Gerard Lanquest")
+    );
+
+    private final List<String> requirements = Arrays.asList(
+            "Ordinateur avec Java nécessaire",
+            "Venir avec un browser capable d'aller sur Iternet",
+            "Un ordinateur avec 8 Go de ram nécessaire : on va faire du Virtual Box !",
+            "Un ordinateur avec watercooling pour compiler du code Scala",
+            "Windows interdit lors de ce Labs !"
+    );
+
+    private final List<MongoTalk.Agenda> agendas = Arrays.asList(
+            new MongoTalk.Agenda("Brouillon", "Intro / Développement / Pause / Développement / Conclusion"),
+            new MongoTalk.Agenda("Brouillon", "Sujet Technique / Troll / Sujet Technique"),
+            new MongoTalk.Agenda("Définitif", "Introduction / Slides 1 / Slides 2 ... Slides 378 / Conclusion")
+    );
+
     private void run() {
+
+
+        conferenceType.put("Conference", (Action1<MongoTalk>) o -> {
+            o.techTeam = techTeams.get(new Random().nextInt(techTeams.size()));
+        });
+        conferenceType.put("BOF (Bird of a Feather)", (Action1<MongoTalk>) o -> {
+            // nothing to do
+        });
+        conferenceType.put("University", (Action1<MongoTalk>) o -> {
+            o.agenda = agendas.get(new Random().nextInt(agendas.size()));
+            // nothing to do
+        });
+        conferenceType.put("Hand's on Labs", (Action1<MongoTalk>) o -> {
+            o.requirement = requirements.get(new Random().nextInt(requirements.size()));
+        });
+
+
         final Log log = new Log(verbose);
         try {
             new Feed().feed();
@@ -116,12 +155,19 @@ public class Feeder {
             }).map(talk -> {
                 MongoTalk t = new MongoTalk();
 
-                log.info("Build du talk %s", talk.id);
+                log.info("Build du talk %s - %s", talk.id, talk.talkType);
                 t._id = talk.id;
                 t.title = talk.title;
                 t.lang = talk.lang;
                 t.summary = talk.summaryAsHtml;
-                t.type = talk.type;
+                t.type = talk.talkType;
+
+                // update selon le type de conf
+                Action1<MongoTalk> updateTalk = conferenceType.get(t.type);
+
+                if(updateTalk != null) {
+                    updateTalk.call(t);
+                }
 
 
                 final String lowerSummary = talk.summaryAsHtml.toLowerCase();
@@ -171,7 +217,7 @@ public class Feeder {
             }, throwable -> log.error("Speakers oups", throwable),
                     () -> {
                         log.info("Speakers done ! gogogo talks !");
-                        talks.retry().subscribe(mongoTalk -> {
+                        talks.subscribe(mongoTalk -> {
                             try {
                                 log.info("Ajout du talk %s en base", mongoTalk._id);
                                 dbTalks.insert(mongoTalk);

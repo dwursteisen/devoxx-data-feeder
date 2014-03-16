@@ -3,6 +3,7 @@ package com.github.mongo.labs.feeder.model;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.LinkedList;
+import java.util.List;
 
 /**
  * Created with IntelliJ IDEA.
@@ -20,6 +21,10 @@ public class MongoTalk {
     public Collection<TalkSpeaker> speakers = new ArrayList<>();
     public LinkedList<String> tags;
 
+    public List<String> techTeam;
+    public String requirement;
+    public Agenda agenda;
+
     @Override
     public String toString() {
         return _id + " -> " + speakers;
@@ -28,5 +33,18 @@ public class MongoTalk {
     public static class TalkSpeaker {
         public MongoSpeaker.Name name;
         public String ref;
+    }
+
+    public static class Agenda {
+        public String status;
+        public String description;
+
+        public Agenda() {
+        }
+
+        public Agenda(String status, String description) {
+            this.status = status;
+            this.description = description;
+        }
     }
 }

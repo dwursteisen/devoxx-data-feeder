@@ -15,7 +15,7 @@ import java.util.Collection;
 public class Talk {
 
     public String id;
-    public String type;
+    public String talkType;
     public String summaryAsHtml;
     public String title;
     public String lang;
