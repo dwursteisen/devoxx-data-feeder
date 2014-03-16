@@ -2,7 +2,6 @@ package com.github.mongo.labs.feeder;
 
 import com.github.mongo.labs.feeder.api.CfpDevoxx;
 import com.github.mongo.labs.feeder.api.Speaker;
-import com.github.mongo.labs.feeder.api.Talk;
 import com.github.mongo.labs.feeder.model.MongoSpeaker;
 import com.github.mongo.labs.feeder.model.MongoTalk;
 import com.github.ryenus.rop.OptionParser;
@@ -12,11 +11,7 @@ import org.jongo.Jongo;
 import org.jongo.MongoCollection;
 import retrofit.RestAdapter;
 import rx.Observable;
-import rx.schedulers.Schedulers;
-import rx.util.functions.Action0;
-import rx.util.functions.Action1;
 import rx.util.functions.Func1;
-import rx.util.functions.Func2;
 
 import java.net.UnknownHostException;
 import java.util.Arrays;
@@ -51,7 +46,9 @@ public class Feeder {
             "tdd",
             "javascript",
             "git",
-            "virtualisation");
+            "virtualisation",
+            "groovy",
+            "clojure");
     @OptionParser.Option(opt = {"--verbose", "-V"}, description = "Log each operation done")
     private boolean verbose;
     @OptionParser.Option(opt = "--uri", description = "MongoDB uri to use (default: mongodb://localhost:27017/devoxx)")
@@ -85,9 +82,7 @@ public class Feeder {
 
     private class Feed {
         private final Log log;
-
         private final CfpDevoxx service;
-
         private final MongoCollection dbSpeakers;
         private final MongoCollection dbTalks;
 
@@ -114,32 +109,14 @@ public class Feeder {
 
             Observable<Speaker> speakers = speakersStream();
 
-            Observable<MongoSpeaker> mSpeakers = speakers.map(speaker -> {
-                MongoSpeaker s = new MongoSpeaker();
-                s.name = new MongoSpeaker.Name();
-                s.name.firstName = speaker.firstName;
-                s.name.lastName = speaker.lastName;
-                s.bio = speaker.bioAsHtml;
-                s.geo = new MongoSpeaker.Geo();
-                return s;
-            });
-
-            mSpeakers.subscribe(mongoSpeaker -> {
-                log.info("Ajout du speaker %s en base", mongoSpeaker.name);
-                dbSpeakers.insert(mongoSpeaker);
-            }, throwable -> {
-                log.error("Speakers oups", throwable);
-            }, () -> {
-                log.info("Speakers done !");
-            }
-            );
 
             Observable<MongoTalk> talks = talksStream(speakers).flatMap(id -> {
                 log.info("Gestion du talk %s", id);
                 return service.talk(id);
-            }).retry(5).map(talk -> {
+            }).map(talk -> {
                 MongoTalk t = new MongoTalk();
 
+                log.info("Build du talk %s", talk.id);
                 t._id = talk.id;
                 t.title = talk.title;
                 t.lang = talk.lang;
@@ -177,44 +154,54 @@ public class Feeder {
                 return t;
             });
 
-            talks
-                    .subscribeOn(Schedulers.currentThread())
-                    .observeOn(Schedulers.currentThread())
-                    .subscribe(mongoTalk -> {
-                        try {
-                            dbTalks.insert(mongoTalk);
-                            log.info("Ajout du talk %s en base", mongoTalk._id);
 
-                        } catch (Exception ex) {
-                            log.error("Problème avec le talk " + mongoTalk._id, ex);
-                        }
-                    }, throwable -> {
-                        log.error("talks Oups", throwable);
-                    }, () -> {
-                        log.info("Talks : DONE");
-                    }
-                    );
+            Observable<MongoSpeaker> mSpeakers = speakers.map(speaker -> {
+                MongoSpeaker s = new MongoSpeaker();
+                s.name = new MongoSpeaker.Name();
+                s.name.firstName = speaker.firstName;
+                s.name.lastName = speaker.lastName;
+                s.bio = speaker.bioAsHtml;
+                s.geo = new MongoSpeaker.Geo();
+                return s;
+            });
 
-            Observable.merge(mSpeakers, talks).map(o -> 1).scan((seed, newValue) -> seed.intValue() + newValue.intValue()).subscribe(new Action1<Integer>() {
-                @Override
-                public void call(Integer integer) {
-                    log.info("Entité ajouté en base : %d", integer);
-                }
+            mSpeakers.subscribe(mongoSpeaker -> {
+                log.info("Ajout du speaker %s en base", mongoSpeaker.name);
+                dbSpeakers.insert(mongoSpeaker);
+            }, throwable -> log.error("Speakers oups", throwable),
+                    () -> {
+                        log.info("Speakers done ! gogogo talks !");
+                        talks.retry().subscribe(mongoTalk -> {
+                            try {
+                                log.info("Ajout du talk %s en base", mongoTalk._id);
+                                dbTalks.insert(mongoTalk);
+
+                            } catch (Exception ex) {
+                                log.error("Problème avec le talk " + mongoTalk._id, ex);
+                            }
+                        }, throwable -> log.error("talks Oups", throwable),
+                                () -> log.info("Talks : DONE")
+                        );
+
+                    });
+
+
+            Observable.merge(mSpeakers, talks).map(o -> 1).scan((seed, newValue) -> seed + newValue).subscribe(integer -> {
+                log.info("Nb Entité ajouté en base : %d", integer);
             });
         }
 
         private Observable<String> talksStream(Observable<Speaker> speakers) {
-            Observable<Long> throttler = Observable.timer(1, TimeUnit.SECONDS);
+            Observable<Long> throttler = Observable.interval(1, TimeUnit.SECONDS);
 
-            Observable<String> talksIds = speakers.flatMap((Speaker speaker) -> Observable.from(speaker.acceptedTalks)).flatMap((Speaker.AcceptedTalk acceptedTalk) -> Observable.from(acceptedTalk.links)).filter(link -> link.getTalkId() != null).filter(new Func1<Speaker.Link, Boolean>() {
-                @Override
-                public Boolean call(Speaker.Link link) {
-                    if (drop) {
-                        return true;
-                    }
-                    return dbTalks.findOne("{_id: #}", link.getTalkId()).as(MongoTalk.class) == null;
+            Observable<String> talksIds = speakers
+                    .flatMap((Speaker speaker) -> Observable.from(speaker.acceptedTalks)).flatMap((Speaker.AcceptedTalk acceptedTalk) -> Observable.from(acceptedTalk.links)).filter(link -> link.getTalkId() != null).filter(link -> {
+                if (drop) {
+                    return true;
                 }
-            }).map((Speaker.Link link) -> link.getTalkId()).distinct();
+                log.info("Recherche du talk %s du speaker %s", link.getTalkId(), link.title);
+                return dbTalks.findOne("{_id: #}", link.getTalkId()).as(MongoTalk.class) == null;
+            }).map(Speaker.Link::getTalkId).distinct().cache();
 
 
             return Observable.zip(talksIds, throttler, (talkId, timestamp) -> {
