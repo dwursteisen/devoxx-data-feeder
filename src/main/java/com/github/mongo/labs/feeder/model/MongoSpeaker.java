@@ -31,8 +31,8 @@ public class MongoSpeaker {
 
         public Geo() {
             Random random = new Random();
-            longitude = new BigDecimal(random.nextInt(488889 - 488410) + 488410).divide(new BigDecimal("10000")).setScale(4, RoundingMode.DOWN).doubleValue();
-            latitude = new BigDecimal(random.nextInt(23808 - 22719) + 23808).divide(new BigDecimal("10000")).setScale(4, RoundingMode.DOWN).doubleValue();
+            longitude = new BigDecimal(random.nextInt(24808 - 22319) + 22319).divide(new BigDecimal("10000")).setScale(4, RoundingMode.DOWN).doubleValue();
+            latitude = new BigDecimal(random.nextInt(489101 - 488010) + 488010).divide(new BigDecimal("10000")).setScale(4, RoundingMode.DOWN).doubleValue();
         }
     }
 
