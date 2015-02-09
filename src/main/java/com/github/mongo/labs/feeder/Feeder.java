@@ -1,5 +1,14 @@
 package com.github.mongo.labs.feeder;
 
+import java.net.UnknownHostException;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Map;
+import java.util.Random;
+import java.util.concurrent.TimeUnit;
+
 import com.github.mongo.labs.feeder.api.CfpDevoxx;
 import com.github.mongo.labs.feeder.api.Speaker;
 import com.github.mongo.labs.feeder.model.MongoSpeaker;
@@ -11,11 +20,7 @@ import org.jongo.Jongo;
 import org.jongo.MongoCollection;
 import retrofit.RestAdapter;
 import rx.Observable;
-import rx.util.functions.Action1;
-
-import java.net.UnknownHostException;
-import java.util.*;
-import java.util.concurrent.TimeUnit;
+import rx.functions.Action1;
 
 /**
  * Created with IntelliJ IDEA.
@@ -163,18 +168,15 @@ public class Feeder {
                 t.type = talk.talkType;
 
                 // update selon le type de conf
-                Action1<MongoTalk> updateTalk = conferenceType.get(t.type);
-
-                if(updateTalk != null) {
-                    updateTalk.call(t);
-                }
+                conferenceType.getOrDefault(t.type, (mongoTalk) -> {
+                }).call(t);
 
 
                 final String lowerSummary = talk.summaryAsHtml.toLowerCase();
                 t.tags = Observable.from(cloudWords).filter(lowerSummary::contains).reduce(new LinkedList<String>(), (words, s) -> {
                     words.add(s);
                     return words;
-                }).toBlockingObservable().single();
+                }).toBlocking().single();
 
 
                 t.speakers = Observable.from(talk.speakers).flatMap(link -> {
@@ -195,7 +197,7 @@ public class Feeder {
                 }).reduce(new LinkedList<MongoTalk.TalkSpeaker>(), (speakersList, mongoSpeaker) -> {
                     speakersList.add(mongoSpeaker);
                     return speakersList;
-                }).toBlockingObservable().single();
+                }).toBlocking().single();
 
                 return t;
             });
@@ -211,30 +213,19 @@ public class Feeder {
                 return s;
             });
 
-            mSpeakers.subscribe(mongoSpeaker -> {
+            mSpeakers.doOnNext(mongoSpeaker -> {
                 log.info("Ajout du speaker %s en base", mongoSpeaker.name);
                 dbSpeakers.insert(mongoSpeaker);
-            }, throwable -> log.error("Speakers oups", throwable),
-                    () -> {
-                        log.info("Speakers done ! gogogo talks !");
-                        talks.subscribe(mongoTalk -> {
-                            try {
-                                log.info("Ajout du talk %s en base", mongoTalk._id);
-                                dbTalks.insert(mongoTalk);
+            }).cast(Object.class).concatWith(talks.doOnNext(mongoTalk -> {
+                try {
+                    log.info("Ajout du talk %s en base", mongoTalk._id);
+                    dbTalks.insert(mongoTalk);
 
-                            } catch (Exception ex) {
-                                log.error("Problème avec le talk " + mongoTalk._id, ex);
-                            }
-                        }, throwable -> log.error("talks Oups", throwable),
-                                () -> log.info("Talks : DONE")
-                        );
+                } catch (Exception ex) {
+                    log.error("Problème avec le talk " + mongoTalk._id, ex);
+                }
+            })).reduce(0, (seed, value) -> seed + 1).toBlocking().forEach((i) -> log.info("Nb Entité ajouté en base : %d", i));
 
-                    });
-
-
-            Observable.merge(mSpeakers, talks).map(o -> 1).scan((seed, newValue) -> seed + newValue).subscribe(integer -> {
-                log.info("Nb Entité ajouté en base : %d", integer);
-            });
         }
 
         private Observable<String> talksStream(Observable<Speaker> speakers) {

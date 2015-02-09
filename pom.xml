@@ -17,8 +17,8 @@
         </dependency>
 
         <dependency>
-            <groupId>com.netflix.rxjava</groupId>
-            <artifactId>rxjava-core</artifactId>
+            <groupId>io.reactivex</groupId>
+            <artifactId>rxjava</artifactId>
             <version>${rxjava.version}</version>
         </dependency>
 
@@ -51,9 +51,9 @@
     <properties>
         <jongo.version>1.0</jongo.version>
         <mongo-java-driver.version>2.9.1</mongo-java-driver.version>
-        <retrofit.version>1.4.1</retrofit.version>
+        <retrofit.version>1.9.0</retrofit.version>
         <rop.version>1.1</rop.version>
-        <rxjava.version>0.16.0</rxjava.version>
+        <rxjava.version>1.0.0</rxjava.version>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <maven.compiler.source>1.8</maven.compiler.source>
         <maven.compiler.target>1.8</maven.compiler.target>
