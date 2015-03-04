@@ -27,7 +27,7 @@ public class Speaker {
         public String title;
 
         public String getTalkId() {
-            if(href.contains("devoxxFR2014/talks")) {
+            if(href.contains("devoxxFR2015/talks")) {
                 int index = href.lastIndexOf("/") + 1;
                 return href.substring(index, href.length());
             }

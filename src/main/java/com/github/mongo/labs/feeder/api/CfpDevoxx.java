@@ -15,12 +15,12 @@ import java.util.List;
  */
 public interface CfpDevoxx {
 
-    @GET("/conferences/devoxxFR2014/speakers")
+    @GET("/conferences/devoxxFR2015/speakers")
     Observable<List<Speaker>> speakers();
 
-    @GET("/conferences/devoxxFR2014/speakers/{uid}")
+    @GET("/conferences/devoxxFR2015/speakers/{uid}")
     Observable<Speaker> speaker(@Path("uid") String uid);
 
-    @GET("/conferences/devoxxFR2014/talks/{id}")
+    @GET("/conferences/devoxxFR2015/talks/{id}")
     Observable<Talk> talk(@Path("id") String id);
 }

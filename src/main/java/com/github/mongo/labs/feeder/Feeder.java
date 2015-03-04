@@ -157,7 +157,7 @@ public class Feeder {
             Observable<MongoTalk> talks = talksStream(speakers).flatMap(id -> {
                 log.info("Gestion du talk %s", id);
                 return service.talk(id);
-            }).map(talk -> {
+            }).flatMap(talk -> {
                 MongoTalk t = new MongoTalk();
 
                 log.info("Build du talk %s - %s", talk.id, talk.talkType);
@@ -168,18 +168,12 @@ public class Feeder {
                 t.type = talk.talkType;
 
                 // update selon le type de conf
-                conferenceType.getOrDefault(t.type, (mongoTalk) -> {
-                }).call(t);
-
+                conferenceType.getOrDefault(t.type, (mongoTalk) -> {}).call(t);
 
                 final String lowerSummary = talk.summaryAsHtml.toLowerCase();
-                t.tags = Observable.from(cloudWords).filter(lowerSummary::contains).reduce(new LinkedList<String>(), (words, s) -> {
-                    words.add(s);
-                    return words;
-                }).toBlocking().single();
+                Observable<List<String>> obsTags = Observable.from(cloudWords).filter(lowerSummary::contains).toList();
 
-
-                t.speakers = Observable.from(talk.speakers).flatMap(link -> {
+                Observable<List<MongoTalk.TalkSpeaker>> obsSpeaker = Observable.from(talk.speakers).flatMap(link -> {
                     log.info("recuperation pour le talk %s du speaker %s", talk.id, link.getSpeakerUid());
                     return service.speaker(link.getSpeakerUid());
                 }).map(speaker -> {
@@ -194,12 +188,15 @@ public class Feeder {
                         s.ref = dbSpeaker._id.toString();
                     }
                     return s;
-                }).reduce(new LinkedList<MongoTalk.TalkSpeaker>(), (speakersList, mongoSpeaker) -> {
-                    speakersList.add(mongoSpeaker);
-                    return speakersList;
-                }).toBlocking().single();
+                }).toList();
 
-                return t;
+
+                Observable<MongoTalk> just = Observable.just(t);
+                return Observable.zip(just, obsTags, obsSpeaker, (zTalk, zTags, zSpeakers) -> {
+                    zTalk.tags = new LinkedList<>(zTags);
+                    zTalk.speakers = zSpeakers;
+                    return zTalk;
+                });
             });
 
 
@@ -216,36 +213,37 @@ public class Feeder {
             mSpeakers.doOnNext(mongoSpeaker -> {
                 log.info("Ajout du speaker %s en base", mongoSpeaker.name);
                 dbSpeakers.insert(mongoSpeaker);
-            }).cast(Object.class).concatWith(talks.doOnNext(mongoTalk -> {
-                try {
-                    log.info("Ajout du talk %s en base", mongoTalk._id);
-                    dbTalks.insert(mongoTalk);
-
-                } catch (Exception ex) {
-                    log.error("Problème avec le talk " + mongoTalk._id, ex);
-                }
+            }).cast(Object.class).concatWith(talks.flatMap(mongoTalk -> {
+                return Observable.just(mongoTalk).flatMap((t) -> {
+                    try {
+                        TimeUnit.SECONDS.sleep(1);
+                        log.info("Ajout du talk %s en base", mongoTalk._id);
+                        dbTalks.insert(mongoTalk);
+                        return Observable.just(t);
+                    } catch (Exception ex) {
+                        log.error("Problème avec le talk " + mongoTalk._id, ex);
+                        return Observable.error(ex);
+                    }
+                }).retry(2);
             })).reduce(0, (seed, value) -> seed + 1).toBlocking().forEach((i) -> log.info("Nb Entité ajouté en base : %d", i));
 
         }
 
         private Observable<String> talksStream(Observable<Speaker> speakers) {
-            Observable<Long> throttler = Observable.interval(1, TimeUnit.SECONDS);
 
             Observable<String> talksIds = speakers
-                    .flatMap((Speaker speaker) -> Observable.from(speaker.acceptedTalks)).flatMap((Speaker.AcceptedTalk acceptedTalk) -> Observable.from(acceptedTalk.links)).filter(link -> link.getTalkId() != null).filter(link -> {
-                if (drop) {
-                    return true;
-                }
-                log.info("Recherche du talk %s du speaker %s", link.getTalkId(), link.title);
-                return dbTalks.findOne("{_id: #}", link.getTalkId()).as(MongoTalk.class) == null;
-            }).map(Speaker.Link::getTalkId).distinct().cache();
+                    .flatMap((Speaker speaker) -> Observable.from(speaker.acceptedTalks))
+                    .flatMap((Speaker.AcceptedTalk acceptedTalk) -> Observable.from(acceptedTalk.links))
+                    .filter(link -> link.getTalkId() != null)
+                    .filter(link -> drop)
+                    .filter(link -> {
+                        log.info("Recherche du talk %s du speaker %s", link.getTalkId(), link.title);
+                        return dbTalks.findOne("{_id: #}", link.getTalkId()).as(MongoTalk.class) == null;
+                    }).map(Speaker.Link::getTalkId)
+                    .distinct();
 
 
-            return Observable.zip(talksIds, throttler, (talkId, timestamp) -> {
-
-                log.info("Appel de %s timestamp %d", talkId, timestamp);
-                return talkId;
-            });
+            return talksIds;
         }
 
         private Observable<Speaker> speakersStream() {
